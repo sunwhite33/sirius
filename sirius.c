@@ -4,7 +4,7 @@
 
 #include <srs_config.h>
  
-int main()
+int main(int argc, char const **argv)
 {
     int num = 3;
     pid_t pid = 0;
@@ -12,11 +12,13 @@ int main()
     printf("pid is %d\n",getpid());     //获取进程的pid
     if (0 < pid)        //父进程得到的pid大于0,这段代码是父进程中执行的
     {
+        sleep(60);
         num++;
         printf("I am parent!,num is %d\n",num);
     }
     else if(0 == pid)   //子进程得到的返回值是0，这段代码在子进程中执行
     {
+        sleep(60);
         num--;
         printf("I am son!,num is %d\n",num);
     }   
