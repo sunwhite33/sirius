@@ -50,3 +50,12 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# sirius executables
+sirius
+
+# cmake build files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
