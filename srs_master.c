@@ -2,35 +2,100 @@
  * Copyright (C) sunwhite
  */
 
-#include <srs_config.h>
+#include <srs_common.h>
+
+#define MAXLINE 10   //最大长度
+#define OPEN_MAX 100
+#define LISTENQ 20
+#define SERV_PORT 8000
+#define INFTIM 1000
+#define IP_ADDR "10.73.219.151"
  
-int srs_master_init()
+srs_int32_t srs_master_init()
 {
-    int num = 3;
-    pid_t pid = 0;
-    pid = fork();           //创建一个子进程,fork()函数没有参数。
-    printf("pid is %d\n",getpid());     //获取进程的pid
-    if (0 < pid)        //父进程得到的pid大于0,这段代码是父进程中执行的
+    struct epoll_event ev, events[20];
+    struct sockaddr_in clientaddr, serveraddr;
+    int epfd;
+    int listenfd;//监听fd
+    int maxi;
+    int nfds;
+    int i;
+    int sock_fd, conn_fd;
+    char buf[MAXLINE];
+
+    epfd = epoll_create(256);//生成epoll句柄
+    listenfd = socket(AF_INET, SOCK_STREAM, 0);//创建套接字
+    ev.data.fd = listenfd;//设置与要处理事件相关的文件描写叙述符
+    ev.events = EPOLLIN;//设置要处理的事件类型
+
+    epoll_ctl(epfd, EPOLL_CTL_ADD, listenfd, &ev);//注冊epoll事件
+
+    memset(&serveraddr, 0, sizeof(serveraddr));
+    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serveraddr.sin_port = htons(SERV_PORT);
+    bind(listenfd,(struct sockaddr*)&serveraddr, sizeof(serveraddr));//绑定套接口
+    socklen_t clilen;
+    listen(listenfd, LISTENQ);//转为监听套接字
+    int n;
+    while(1)
     {
-        sleep(60);
-        num++;
-        printf("I am parent!,num is %d\n",num);
+        nfds = epoll_wait(epfd,events,20,500);//等待事件发生
+        //处理所发生的全部事件
+        for(i=0;i<nfds;i++)
+        {
+            if(events[i].data.fd == listenfd)//有新的连接
+            {
+                clilen = sizeof(struct sockaddr_in);
+                conn_fd = accept(listenfd, (struct sockaddr*)&clientaddr, &clilen);
+                printf("accept a new client : %s\n",inet_ntoa(clientaddr.sin_addr));
+                ev.data.fd = conn_fd;
+                ev.events = EPOLLIN;//设置监听事件为可写
+                epoll_ctl(epfd, EPOLL_CTL_ADD, conn_fd, &ev);//新增套接字
+            }
+            else if(events[i].events & EPOLLIN)//可读事件
+            {
+                if((sock_fd = events[i].data.fd) < 0)
+                    continue;
+                if((n = recv(sock_fd, buf, MAXLINE, 0)) < 0)
+                {
+                    if(errno == ECONNRESET)
+                    {
+                        close(sock_fd);
+                        events[i].data.fd = -1;
+                    }
+                    else
+                    {
+                        printf("readline error\n");
+                    }
+                }
+                else if(n == 0)
+                {
+                    close(sock_fd);
+                    printf("关闭\n");
+                    events[i].data.fd = -1;
+                }
+
+                printf("%d -- > %s\n",sock_fd, buf);
+                ev.data.fd = sock_fd;
+                ev.events = EPOLLOUT;
+                epoll_ctl(epfd,EPOLL_CTL_MOD,sock_fd,&ev);//改动监听事件为可读
+            }
+
+            else if(events[i].events & EPOLLOUT)//可写事件
+            {
+                sock_fd = events[i].data.fd;
+                printf("OUT\n");
+                scanf("%s",buf);
+                send(sock_fd, buf, MAXLINE, 0);
+
+                ev.data.fd = sock_fd;
+                ev.events = EPOLLIN;
+                epoll_ctl(epfd, EPOLL_CTL_MOD,sock_fd, &ev);
+            }
+        }
     }
-    else if(0 == pid)   //子进程得到的返回值是0，这段代码在子进程中执行
-    {
-        sleep(60);
-        num--;
-        printf("I am son!,num is %d\n",num);
-    }   
-   else                 //创建进程失败
-   {
-       //有两种情况会失败：
-       //1.进程数目达到OS的最大值
-       //2.进程创建时内存不够了。
-       printf("fork error!\n");
-       exit(-1);
-   }
-   
-    
-    return 0;
+
+    return 0;   
 }
+
